@@ -81,6 +81,53 @@ strings below change.
   rules are not applied to label keys. Use `REDACT_LABEL_KEYS` / `REDACT_PATTERNS` /
   `REDACT_LABELS`.
 
+## Docker
+
+The image is `gcr.io/distroless/static-debian12:nonroot` (no shell, one static binary, uid 65532,
+multi-arch amd64/arm64). The socket is usually `root:docker` mode 660, so the container user must
+join the socket's group; `--group-add` / `group_add` takes the numeric GID
+(`stat -c %g /var/run/docker.sock`). Use a read-only rootfs and drop capabilities.
+
+```sh
+docker run -d --name socket-proxy -p 127.0.0.1:2375:2375 \
+  --group-add "$(stat -c %g /var/run/docker.sock)" --read-only --cap-drop ALL \
+  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  -e CONTAINERS=1 -e PING=1 youruser/docker-socket-secure-proxy
+```
+
+Compose with Traefik:
+
+```yaml
+services:
+  socket-proxy:
+    image: youruser/docker-socket-secure-proxy
+    group_add: ["999"]            # GID of /var/run/docker.sock on the host
+    read_only: true
+    cap_drop: [ALL]
+    environment: { CONTAINERS: 1, NETWORKS: 1, SERVICES: 1, TASKS: 1, EVENTS: 1, VERSION: 1, INFO: 1, PING: 1 }
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock:ro"]
+    networks: [proxy]
+    # HEALTHCHECK is built in (--healthcheck, needs PING=1)
+  traefik:
+    image: traefik:v3
+    command: ["--providers.docker.endpoint=tcp://socket-proxy:2375", "--providers.docker.exposedbydefault=false"]
+    networks: [proxy]
+networks: { proxy: { internal: true } }
+```
+
+Build locally: `docker build -t docker-socket-secure-proxy .` (BuildKit needed for multi-arch;
+`scripts/e2e-container.sh` runs a redaction check against the built image).
+
+### CI and Docker Hub
+
+`.github/workflows/ci.yml` runs vet, tests and a static build check on push/PR.
+`.github/workflows/release.yml` builds and pushes `linux/amd64,linux/arm64` (with SBOM and
+provenance) on `v*.*.*` tags (`X.Y.Z`, `X.Y`, `latest`) and on main (`edge`). Repository settings:
+
+* Secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` (Docker Hub access token with write scope).
+* Optional variable `DOCKERHUB_IMAGE` (e.g. `myorg/docker-socket-secure-proxy`); defaults to
+  `<DOCKERHUB_USERNAME>/docker-socket-secure-proxy`.
+
 ## Traefik
 
 ```yaml
