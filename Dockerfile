@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # Defaults let the legacy (non-BuildKit) builder work; buildx overrides them.
 ARG BUILDPLATFORM=linux/amd64
-FROM --platform=$BUILDPLATFORM golang:1.27.4 AS build
+FROM --platform=$BUILDPLATFORM golang:1.27.4@sha256:5f1b98fa02fe396ebce2a0227a0e08309e11792915b9dd2e1f71053d7e7e6666 AS build
 ARG TARGETOS
 ARG TARGETARCH
 WORKDIR /src
@@ -11,7 +11,8 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath -ldflags="-s -w" -o /out/docker-socket-secure-proxy ./cmd/docker-socket-secure-proxy
 
-FROM gcr.io/distroless/static-debian13
+# static-debian13 (latest) pinned by digest; dependabot docker ecosystem bumps it
+FROM gcr.io/distroless/static-debian13@sha256:4c2cd1dee442c9a99924a378c7c126fac8fef14771579ef567c3f2bdd7a5122a
 ARG VERSION=dev
 ARG REVISION=unknown
 LABEL org.opencontainers.image.title="docker-socket-secure-proxy" \

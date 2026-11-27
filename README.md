@@ -46,6 +46,9 @@ toolchain without `GOEXPERIMENT`; on older toolchains use `GOEXPERIMENT=jsonv2 m
 | `REDACT_PATTERNS` | none | regexes; matches inside any JSON string value become `REDACTED` |
 | `MAX_BODY_BYTES` | `67108864` | max buffered JSON response |
 | `REQUEST_TIMEOUT` | `60s` | upstream timeout for non-streaming requests |
+| `MAX_CONCURRENT_REQUESTS` | `256` | max in-flight requests; extra ones get `503` + `Retry-After` (`/_ping` is exempt) |
+| `STREAM_TIMEOUT` | `24h` | max lifetime of log/event streams, after which they are closed |
+| `DIAL_TIMEOUT` | `5s` | timeout connecting to the docker socket (response-header wait uses `REQUEST_TIMEOUT`) |
 | `LOG_LEVEL` | `info` | slog level |
 
 ### Coming from tecnativa/docker-socket-proxy
@@ -145,16 +148,23 @@ Build locally: `docker build -t docker-socket-secure-proxy .` (BuildKit needed f
 ### CI and Docker Hub
 
 `.github/workflows/build-release.yml` is the single workflow. The `test` job (vet, `go test -race`,
-static build check) runs only on `v*.*.*` tag pushes and manual dispatch (`gh workflow run build-release.yml`); it
-does not run on pushes to main or pull requests, so run `go vet ./... && go test -race ./...`
-locally before pushing.
+`govulncheck`, static build check) runs on `v*.*.*` tag pushes, manual dispatch (`gh workflow run build-release.yml`)
+and pull requests to main (test only; nothing is built or published for PRs).
 For tags it first checks the tagged commit is an ancestor of `origin/main` ("release tags must
 come from main"). Only if `test` passes, and only for tags or manual runs on main, the `build` matrix builds
 `linux/amd64` (ubuntu-latest) and `linux/arm64` (native `ubuntu-24.04-arm` runner, no QEMU) and
 pushes each by digest; the `merge` job publishes the multi-arch manifest (`X.Y.Z`, `X.Y`,
 `latest` on tags, `edge` on manual runs from main; SBOM and provenance attached). On tags a final `release` job
 creates a GitHub Release with generated notes. Dependabot (`.github/dependabot.yml`) opens
-weekly update PRs for Go modules, GitHub Actions and the Dockerfile base image.
+weekly update PRs for Go modules, GitHub Actions and the Dockerfile base image. Actions and base images
+are pinned by commit SHA / digest. After the manifest is published, `merge` scans it with Trivy (fails on fixable
+HIGH/CRITICAL) and signs it with cosign keyless (GitHub OIDC). Verify:
+
+```sh
+cosign verify IMAGE@sha256:... \
+  --certificate-identity-regexp '^https://github.com/rsubr/docker-socket-secure-proxy/\.github/workflows/build-release\.yml@refs/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
 
 #### Docker Hub push setup
 
