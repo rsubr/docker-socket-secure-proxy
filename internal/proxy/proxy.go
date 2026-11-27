@@ -30,6 +30,7 @@ type Handler struct {
 	red *redact.Redactor
 	rp  *httputil.ReverseProxy
 	log *slog.Logger
+	sem chan struct{}
 }
 
 // New builds a Handler that talks to the unix socket in cfg.
@@ -43,15 +44,18 @@ func New(cfg *config.Config, log *slog.Logger) *Handler {
 			Patterns:        cfg.RedactPatterns,
 		}),
 		log: log,
+		sem: make(chan struct{}, max(cfg.MaxConcurrent, 1)),
 	}
 	tr := &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			var d net.Dialer
+			d := net.Dialer{Timeout: cfg.DialTimeout}
 			return d.DialContext(ctx, "unix", cfg.Socket)
 		},
-		DisableCompression:  true,
-		MaxIdleConnsPerHost: 16,
-		IdleConnTimeout:     60 * time.Second,
+		DisableCompression:    true,
+		MaxIdleConnsPerHost:   16,
+		IdleConnTimeout:       60 * time.Second,
+		TLSHandshakeTimeout:   cfg.DialTimeout,
+		ResponseHeaderTimeout: cfg.RequestTimeout,
 	}
 	h.rp = &httputil.ReverseProxy{
 		Transport: tr,
@@ -89,12 +93,24 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.log.Warn("denied", "method", r.Method, "path", r.URL.Path, "status", d.Status, "reason", d.Reason, "remote", r.RemoteAddr)
 		return
 	}
-	ctx := context.WithValue(r.Context(), ctxKey{}, d)
-	if !d.Stream && !d.Raw {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, h.cfg.RequestTimeout)
-		defer cancel()
+	if !d.Ping { // keep health checks working when saturated
+		select {
+		case h.sem <- struct{}{}:
+			defer func() { <-h.sem }()
+		default:
+			w.Header().Set("Retry-After", "1")
+			writeError(sw, http.StatusServiceUnavailable, "docker-socket-secure-proxy: too many concurrent requests")
+			h.log.Warn("rejected", "method", r.Method, "path", r.URL.Path, "status", 503, "reason", "MAX_CONCURRENT_REQUESTS", "remote", r.RemoteAddr)
+			return
+		}
 	}
+	ctx := context.WithValue(r.Context(), ctxKey{}, d)
+	timeout := h.cfg.RequestTimeout
+	if d.Stream || d.Raw {
+		timeout = h.cfg.StreamTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	r = r.WithContext(ctx)
 	r.URL.Path, r.URL.RawPath = d.Path, ""
 	r.Body = http.NoBody

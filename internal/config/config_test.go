@@ -19,7 +19,7 @@ func TestDefaultsAndOverrides(t *testing.T) {
 }
 
 func TestInvalid(t *testing.T) {
-	for _, m := range []map[string]string{{"INFO": "maybe"}, {"REDACT_PATTERNS": "("}, {"MAX_BODY_BYTES": "x"}, {"REQUEST_TIMEOUT": "-1s"}} {
+	for _, m := range []map[string]string{{"INFO": "maybe"}, {"REDACT_PATTERNS": "("}, {"MAX_BODY_BYTES": "x"}, {"REQUEST_TIMEOUT": "-1s"}, {"MAX_CONCURRENT_REQUESTS": "0"}, {"STREAM_TIMEOUT": "x"}, {"DIAL_TIMEOUT": "0s"}} {
 		if _, err := Load(env(m)); err == nil {
 			t.Errorf("expected error for %v", m)
 		}
@@ -58,5 +58,16 @@ func TestSocketPathAlias(t *testing.T) {
 	c, _ = Load(env(map[string]string{"SOCKET_PATH": "/a.sock", "DOCKER_SOCKET": "/b.sock"}))
 	if c.Socket != "/b.sock" {
 		t.Errorf("DOCKER_SOCKET must win: %q", c.Socket)
+	}
+}
+
+func TestLimits(t *testing.T) {
+	c, _ := Load(env(nil))
+	if c.MaxConcurrent != 256 || c.StreamTimeout <= 0 || c.DialTimeout <= 0 {
+		t.Fatalf("defaults: %+v", c)
+	}
+	c, err := Load(env(map[string]string{"MAX_CONCURRENT_REQUESTS": "5", "STREAM_TIMEOUT": "2h", "DIAL_TIMEOUT": "1s"}))
+	if err != nil || c.MaxConcurrent != 5 || c.StreamTimeout.Hours() != 2 || c.DialTimeout.Seconds() != 1 {
+		t.Fatalf("%+v %v", c, err)
 	}
 }

@@ -57,6 +57,10 @@ type Config struct {
 	MaxBody        int64
 	RequestTimeout time.Duration
 	LogLevel       string
+
+	MaxConcurrent int           // MAX_CONCURRENT_REQUESTS
+	StreamTimeout time.Duration // STREAM_TIMEOUT: max lifetime of log/event streams
+	DialTimeout   time.Duration // DIAL_TIMEOUT: connect to the docker socket
 }
 
 // ResolveListen returns the address to listen on. A non-empty port (from the
@@ -88,6 +92,9 @@ func Load(getenv func(string) string) (*Config, error) {
 		MaxBody:        64 << 20,
 		RequestTimeout: 60 * time.Second,
 		LogLevel:       or(getenv("LOG_LEVEL"), "info"),
+		MaxConcurrent:  256,
+		StreamTimeout:  24 * time.Hour,
+		DialTimeout:    5 * time.Second,
 	}
 	for k, def := range Defaults {
 		v, err := boolEnv(getenv, k, def)
@@ -119,6 +126,25 @@ func Load(getenv func(string) string) (*Config, error) {
 			return nil, fmt.Errorf("REQUEST_TIMEOUT: invalid %q", s)
 		}
 		c.RequestTimeout = d
+	}
+	if s := getenv("MAX_CONCURRENT_REQUESTS"); s != "" {
+		n, err := strconv.Atoi(s)
+		if err != nil || n <= 0 {
+			return nil, fmt.Errorf("MAX_CONCURRENT_REQUESTS: invalid %q", s)
+		}
+		c.MaxConcurrent = n
+	}
+	for _, e := range []struct {
+		k string
+		d *time.Duration
+	}{{"STREAM_TIMEOUT", &c.StreamTimeout}, {"DIAL_TIMEOUT", &c.DialTimeout}} {
+		if s := getenv(e.k); s != "" {
+			d, err := time.ParseDuration(s)
+			if err != nil || d <= 0 {
+				return nil, fmt.Errorf("%s: invalid %q", e.k, s)
+			}
+			*e.d = d
+		}
 	}
 	return c, nil
 }

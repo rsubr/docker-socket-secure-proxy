@@ -58,7 +58,7 @@ func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func setup(t *testing.T, f *fake) *httptest.Server {
+func setup(t *testing.T, f *fake, env ...string) *httptest.Server {
 	t.Helper()
 	sock := filepath.Join(t.TempDir(), "d.sock")
 	ln, err := net.Listen("unix", sock)
@@ -71,6 +71,11 @@ func setup(t *testing.T, f *fake) *httptest.Server {
 	cfg, _ := config.Load(func(k string) string {
 		if k == "DOCKER_SOCKET" {
 			return sock
+		}
+		for i := 0; i+1 < len(env); i += 2 {
+			if env[i] == k {
+				return env[i+1]
+			}
 		}
 		return ""
 	})
@@ -162,6 +167,42 @@ func TestEventsStreaming(t *testing.T) {
 		case <-time.After(3 * time.Second):
 			t.Fatalf("event %d not delivered while stream open", i)
 		}
+	}
+	close(f.events)
+}
+
+func TestConcurrencyLimit(t *testing.T) {
+	f := &fake{events: make(chan string)}
+	srv := setup(t, f, "MAX_CONCURRENT_REQUESTS", "1")
+	resp, err := http.Get(srv.URL + "/events") // holds the only slot
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	r2, body := get(t, srv.URL+"/containers/abc/json")
+	if r2.StatusCode != 503 || r2.Header.Get("Retry-After") == "" || !strings.Contains(body, "concurrent") {
+		t.Fatalf("want 503, got %d %s", r2.StatusCode, body)
+	}
+	if r3, _ := get(t, srv.URL+"/_ping"); r3.StatusCode != 200 {
+		t.Errorf("ping must bypass limit: %d", r3.StatusCode)
+	}
+	close(f.events)
+}
+
+func TestStreamTimeout(t *testing.T) {
+	f := &fake{events: make(chan string)}
+	srv := setup(t, f, "STREAM_TIMEOUT", "300ms")
+	resp, err := http.Get(srv.URL + "/events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	done := make(chan struct{})
+	go func() { io.Copy(io.Discard, resp.Body); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("stream not terminated by STREAM_TIMEOUT")
 	}
 	close(f.events)
 }

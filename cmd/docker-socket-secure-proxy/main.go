@@ -62,12 +62,15 @@ func main() {
 		os.Exit(1)
 	}
 	log.Info("listening", "addr", ln.Addr().String(), "socket", cfg.Socket, "allow", enabled(cfg))
+	shutdownDone := make(chan struct{})
 	go func() {
+		defer close(shutdownDone)
 		<-ctx.Done()
 		log.Info("shutting down")
 		sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if srv.Shutdown(sctx) != nil {
+		if err := srv.Shutdown(sctx); err != nil {
+			log.Warn("graceful shutdown incomplete, forcing close", "err", err)
 			srv.Close()
 		}
 	}()
@@ -75,6 +78,9 @@ func main() {
 		log.Error("serve failed", "err", err)
 		os.Exit(1)
 	}
+	// Serve returns as soon as Shutdown starts; wait for the drain to finish.
+	<-shutdownDone
+	log.Info("stopped")
 }
 
 func enabled(c *config.Config) []string {
