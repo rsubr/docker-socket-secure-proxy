@@ -109,14 +109,13 @@ strings below change.
 
 ## Docker
 
-The image is `gcr.io/distroless/static-debian12:nonroot` (no shell, one static binary, uid 65532,
-multi-arch amd64/arm64). The socket is usually `root:docker` mode 660, so the container user must
-join the socket's group; `--group-add` / `group_add` takes the numeric GID
-(`stat -c %g /var/run/docker.sock`). Use a read-only rootfs and drop capabilities.
+The image is `gcr.io/distroless/static-debian12` (no shell, one static binary, multi-arch
+amd64/arm64) and runs as root, so it can read the root-owned `/var/run/docker.sock` with no
+`group_add` / `--group-add`. Mount the socket read-only, use a read-only rootfs and drop capabilities.
 
 ```sh
 docker run -d --name socket-proxy -p 127.0.0.1:2375:2375 \
-  --group-add "$(stat -c %g /var/run/docker.sock)" --read-only --cap-drop ALL \
+  --read-only --cap-drop ALL \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   -e CONTAINERS=1 -e PING=1 youruser/docker-socket-secure-proxy
 ```
@@ -127,7 +126,6 @@ Compose with Traefik:
 services:
   socket-proxy:
     image: youruser/docker-socket-secure-proxy
-    group_add: ["999"]            # GID of /var/run/docker.sock on the host
     read_only: true
     cap_drop: [ALL]
     environment: { CONTAINERS: 1, NETWORKS: 1, SERVICES: 1, TASKS: 1, EVENTS: 1, VERSION: 1, INFO: 1, PING: 1 }
