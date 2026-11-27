@@ -1,0 +1,40 @@
+# Drop-in replacement for a tecnativa/docker-socket-proxy compose used by Traefik
+# (docker provider) with only CONTAINERS=1. Read-only proxy that also redacts env vars.
+#
+# The image is not published yet: until then build it locally
+#   (docker build -t rsubr/docker-socket-secure-proxy .) or use a registry you push to.
+#
+# Traefik: --providers.docker.endpoint=tcp://127.0.0.1:2375 (or tcp://docker-socket-proxy:2375
+# when both share a compose network).
+name: docker-socket-proxy-localhost
+services:
+  docker-socket-proxy:
+    image: rsubr/docker-socket-secure-proxy
+    container_name: docker-socket-proxy
+    restart: always
+    ports:
+      - 127.0.0.1:2375:2375
+    mem_limit: 64M
+    environment:
+      CONTAINERS: 1
+      # Unlike tecnativa, IMAGES/NETWORKS/VOLUMES/INFO/SERVICES/TASKS/NODES are on by default
+      # here. Traefik (non-swarm) only needs containers, events and version, so turn the rest off:
+      IMAGES: 0
+      NETWORKS: 0
+      VOLUMES: 0
+      INFO: 0
+      SERVICES: 0
+      TASKS: 0
+      NODES: 0
+    # The image runs as uid 65532 (nonroot). /var/run/docker.sock is root:docker mode 660, so the
+    # user must join the socket's group: put the numeric GID from `stat -c %g /var/run/docker.sock`
+    # here (999 is common, 105 on this host). Alternative: `user: root` instead of group_add.
+    group_add:
+      - "999"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      - com.centurylinklabs.watchtower.enable=true

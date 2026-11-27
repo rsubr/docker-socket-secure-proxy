@@ -37,7 +37,7 @@ toolchain without `GOEXPERIMENT`; on older toolchains use `GOEXPERIMENT=jsonv2 m
 |---|---|---|
 | `LISTEN_ADDR` | `:2375` | listen address (host and port) |
 | `PORT` | none | listen port; replaces the port of `LISTEN_ADDR` (`--port` overrides it) |
-| `DOCKER_SOCKET` | `/var/run/docker.sock` | upstream socket |
+| `DOCKER_SOCKET` | `/var/run/docker.sock` | upstream socket (`SOCKET_PATH`, tecnativa's name, is accepted as an alias) |
 | `CONTAINERS` `IMAGES` `NETWORKS` `VOLUMES` `SERVICES` `TASKS` `NODES` `INFO` `VERSION` `EVENTS` `PING` | `1` | allowed read endpoints |
 | `SWARM` `SECRETS` `CONFIGS` `PLUGINS` `DISTRIBUTION` `SYSTEM` `EXEC` | `0` | opt-in (`/swarm`, `/secrets`, `/configs`, `/plugins`, `/distribution`, `/system/df`, `/exec/{id}/json`) |
 | `LOGS` | `0` | container/service/task logs, **passed through unredacted** (see below) |
@@ -47,6 +47,24 @@ toolchain without `GOEXPERIMENT`; on older toolchains use `GOEXPERIMENT=jsonv2 m
 | `MAX_BODY_BYTES` | `67108864` | max buffered JSON response |
 | `REQUEST_TIMEOUT` | `60s` | upstream timeout for non-streaming requests |
 | `LOG_LEVEL` | `info` | slog level |
+
+### Coming from tecnativa/docker-socket-proxy
+
+Category variable names match tecnativa's (`CONTAINERS`, `NETWORKS`, `SERVICES`, `TASKS`, `NODES`,
+`INFO`, `IMAGES`, `VOLUMES`, `EVENTS`, `PING`, `VERSION`, `SWARM`, `SECRETS`, `CONFIGS`, `PLUGINS`,
+`DISTRIBUTION`, `SYSTEM`, `EXEC`; `INFO` gates `GET /info`). Differences:
+
+* **Defaults**: tecnativa enables only `EVENTS`, `PING`, `VERSION`; this proxy also enables
+  `CONTAINERS`, `IMAGES`, `NETWORKS`, `VOLUMES`, `SERVICES`, `TASKS`, `NODES`, `INFO`. Set the
+  ones you do not want to `0` for tecnativa-like strictness.
+* **Narrower**: tecnativa's `CONTAINERS=1` allows the whole `/containers` prefix (GET `logs`, `top`,
+  `archive`, `export`); here those stay blocked (`logs` needs `LOGS=1`).
+* **Not supported (read-only)**: `POST`, `ALLOW_START/STOP/RESTARTS/PAUSE/UNPAUSE`, `AUTH`, `BUILD`,
+  `COMMIT`, `GRPC`, `SESSION`. They are ignored; all write methods are denied.
+* `SOCKET_PATH` is accepted as an alias for `DOCKER_SOCKET`; `LOG_LEVEL` works as in tecnativa
+  (slog levels).
+
+A working drop-in for a Traefik setup is in [`examples/docker-compose.yaml`](examples/docker-compose.yaml).
 
 ## What is blocked
 

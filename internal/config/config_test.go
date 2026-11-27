@@ -49,3 +49,14 @@ func TestResolveListen(t *testing.T) {
 		t.Errorf("Port=%q", c.Port)
 	}
 }
+
+func TestSocketPathAlias(t *testing.T) {
+	c, _ := Load(env(map[string]string{"SOCKET_PATH": "/a.sock"}))
+	if c.Socket != "/a.sock" {
+		t.Errorf("SOCKET_PATH alias: %q", c.Socket)
+	}
+	c, _ = Load(env(map[string]string{"SOCKET_PATH": "/a.sock", "DOCKER_SOCKET": "/b.sock"}))
+	if c.Socket != "/b.sock" {
+		t.Errorf("DOCKER_SOCKET must win: %q", c.Socket)
+	}
+}

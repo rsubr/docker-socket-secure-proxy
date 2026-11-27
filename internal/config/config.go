@@ -83,7 +83,7 @@ func Load(getenv func(string) string) (*Config, error) {
 	c := &Config{
 		Port:           getenv("PORT"),
 		ListenAddr:     or(getenv("LISTEN_ADDR"), ":2375"),
-		Socket:         or(getenv("DOCKER_SOCKET"), "/var/run/docker.sock"),
+		Socket:         or(getenv("DOCKER_SOCKET"), or(getenv("SOCKET_PATH"), "/var/run/docker.sock")), // SOCKET_PATH: tecnativa alias
 		Allow:          map[string]bool{},
 		MaxBody:        64 << 20,
 		RequestTimeout: 60 * time.Second,
