@@ -14,12 +14,19 @@ API, including the `/v1.xx/` prefix and headers such as `Api-Version`.
 
 ```sh
 make build                      # bin/docker-socket-secure-proxy (static, stripped)
+./bin/docker-socket-secure-proxy                  # listens on :2375 (Docker's default unencrypted port)
+PORT=8080 ./bin/docker-socket-secure-proxy        # or --port 8080
 LISTEN_ADDR=127.0.0.1:2375 ./bin/docker-socket-secure-proxy
 docker -H tcp://127.0.0.1:2375 ps
 ```
 
-Flags: `-listen`, `-socket`, `-healthcheck` (HEAD `/_ping` on the local listener, exit 0/1;
-for images without curl, needs `PING` enabled).
+Flags: `--listen`, `--port`, `--socket`, `--healthcheck` (HEAD `/_ping` on the local listener,
+exit 0/1; for images without curl, needs `PING` enabled).
+
+Listen address precedence: `--listen` flag, then `LISTEN_ADDR`, then default `:2375`. The port
+is then overridden if set: `--port` flag, then `PORT`. A port replaces only the port of the
+listen address and keeps its host, so `LISTEN_ADDR=127.0.0.1:2375 PORT=8080` listens on
+`127.0.0.1:8080`. `--healthcheck` uses the same resolved address, so it follows `PORT` too.
 
 Go version: built and tested with Go 1.27.4. `encoding/json/v2`/`jsontext` work in this
 toolchain without `GOEXPERIMENT`; on older toolchains use `GOEXPERIMENT=jsonv2 make build`.
@@ -28,7 +35,8 @@ toolchain without `GOEXPERIMENT`; on older toolchains use `GOEXPERIMENT=jsonv2 m
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `LISTEN_ADDR` | `:2375` | listen address |
+| `LISTEN_ADDR` | `:2375` | listen address (host and port) |
+| `PORT` | none | listen port; replaces the port of `LISTEN_ADDR` (`--port` overrides it) |
 | `DOCKER_SOCKET` | `/var/run/docker.sock` | upstream socket |
 | `CONTAINERS` `IMAGES` `NETWORKS` `VOLUMES` `SERVICES` `TASKS` `NODES` `INFO` `VERSION` `EVENTS` `PING` | `1` | allowed read endpoints |
 | `SWARM` `SECRETS` `CONFIGS` `PLUGINS` `DISTRIBUTION` `SYSTEM` `EXEC` | `0` | opt-in (`/swarm`, `/secrets`, `/configs`, `/plugins`, `/distribution`, `/system/df`, `/exec/{id}/json`) |
@@ -121,12 +129,35 @@ Build locally: `docker build -t docker-socket-secure-proxy .` (BuildKit needed f
 ### CI and Docker Hub
 
 `.github/workflows/ci.yml` runs vet, tests and a static build check on push/PR.
-`.github/workflows/release.yml` builds and pushes `linux/amd64,linux/arm64` (with SBOM and
-provenance) on `v*.*.*` tags (`X.Y.Z`, `X.Y`, `latest`) and on main (`edge`). Repository settings:
+`.github/workflows/release.yml` builds `linux/amd64` (ubuntu-latest) and `linux/arm64`
+(native `ubuntu-24.04-arm` runner, no QEMU) in a matrix, pushes each by digest, then a `merge`
+job publishes the multi-arch manifest (`X.Y.Z`, `X.Y`, `latest` on `v*.*.*` tags, `edge` on
+main; SBOM and provenance attached). It runs on those tags, on pushes to main and on manual
+dispatch.
 
-* Secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` (Docker Hub access token with write scope).
-* Optional variable `DOCKERHUB_IMAGE` (e.g. `myorg/docker-socket-secure-proxy`); defaults to
-  `<DOCKERHUB_USERNAME>/docker-socket-secure-proxy`.
+#### Docker Hub push setup
+
+1. Create a Docker Hub account and a repository named `docker-socket-secure-proxy`
+   (e.g. `rsubr/docker-socket-secure-proxy`) at <https://hub.docker.com>.
+2. Create an access token: Account settings, Personal access tokens, Generate new token,
+   scope **Read & Write**. Copy it; it is shown once.
+3. Add GitHub repository secrets (Settings, Secrets and variables, Actions, New repository
+   secret), or with the CLI:
+   ```sh
+   gh secret set DOCKERHUB_USERNAME --body rsubr
+   gh secret set DOCKERHUB_TOKEN        # paste the token when prompted
+   ```
+4. Optional: set a repository variable `DOCKERHUB_IMAGE` (Settings, Secrets and variables,
+   Actions, Variables), e.g. `myorg/docker-socket-secure-proxy`, or
+   `gh variable set DOCKERHUB_IMAGE --body myorg/docker-socket-secure-proxy`. Default is
+   `<DOCKERHUB_USERNAME>/docker-socket-secure-proxy`.
+5. Trigger a release: `git tag v0.1.0 && git push origin v0.1.0`, or run the workflow manually
+   (Actions, Release, Run workflow, or `gh workflow run release.yml`). A push to main publishes
+   the `edge` tag.
+6. Verify: the Actions run shows both `build` jobs and `merge` green; then
+   `docker buildx imagetools inspect rsubr/docker-socket-secure-proxy:0.1.0` lists
+   `linux/amd64` and `linux/arm64`, and `docker run --rm rsubr/docker-socket-secure-proxy:0.1.0 --help`
+   starts the image.
 
 ## Traefik
 
@@ -161,5 +192,9 @@ networks: { proxy: { internal: true } }
 
 ```sh
 make test      # unit tests (race)
-make e2e       # needs local docker; runs scripts/e2e.sh (proxy on :9999)
+make e2e       # needs local docker; runs scripts/e2e.sh (proxy on :19376; override with `PORT=`)
 ```
+
+## License
+
+BSD 3-Clause, see [LICENSE](LICENSE). Copyright (c) 2026, rsubr.

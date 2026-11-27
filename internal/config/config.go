@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"regexp"
 	"strconv"
@@ -44,6 +45,7 @@ var Defaults = map[string]bool{
 
 // Config is the full runtime configuration.
 type Config struct {
+	Port       string // PORT env; replaces the port of ListenAddr
 	ListenAddr string
 	Socket     string
 	Allow      map[string]bool
@@ -57,9 +59,29 @@ type Config struct {
 	LogLevel       string
 }
 
+// ResolveListen returns the address to listen on. A non-empty port (from the
+// --port flag or PORT env) replaces the port of listen; the host part is kept.
+func ResolveListen(listen, port string) (string, error) {
+	if port == "" {
+		return listen, nil
+	}
+	n, err := strconv.Atoi(port)
+	if err != nil || n < 1 || n > 65535 {
+		return "", fmt.Errorf("invalid port %q", port)
+	}
+	host := listen
+	if h, _, err := net.SplitHostPort(listen); err == nil {
+		host = h
+	} else if strings.Contains(listen, ":") {
+		return "", fmt.Errorf("invalid listen address %q", listen)
+	}
+	return net.JoinHostPort(host, port), nil
+}
+
 // Load reads configuration using getenv (os.Getenv in production).
 func Load(getenv func(string) string) (*Config, error) {
 	c := &Config{
+		Port:           getenv("PORT"),
 		ListenAddr:     or(getenv("LISTEN_ADDR"), ":2375"),
 		Socket:         or(getenv("DOCKER_SOCKET"), "/var/run/docker.sock"),
 		Allow:          map[string]bool{},

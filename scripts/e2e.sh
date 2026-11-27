@@ -3,7 +3,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 BIN=${BIN:-bin/docker-socket-secure-proxy}
-PORT=${PORT:-9999}
+PORT=${PORT:-19376}
 SOCK=${DOCKER_SOCKET:-/var/run/docker.sock}
 NAME=proxytest-$$
 OUT=$(mktemp -d)
@@ -25,10 +25,10 @@ docker run -d --name "$NAME" -e OPENAPI_KEY=supersecret123 -e DB_PASSWORD=hunter
   --label traefik.enable=true --label "traefik.http.routers.t.rule=Host(\`t.example.com\`)" \
   alpine sleep 3600 >/dev/null || exit 2
 
-SYSTEM=1 LISTEN_ADDR=127.0.0.1:$PORT DOCKER_SOCKET=$SOCK "$BIN" >"$OUT/proxy.log" 2>&1 &
+SYSTEM=1 PORT=$PORT LISTEN_ADDR=127.0.0.1 DOCKER_SOCKET=$SOCK "$BIN" >"$OUT/proxy.log" 2>&1 &
 PROXY_PID=$!
-for _ in $(seq 50); do "$BIN" --listen 127.0.0.1:$PORT --healthcheck 2>/dev/null && break; sleep 0.1; done
-"$BIN" --listen 127.0.0.1:$PORT --healthcheck && ok "healthcheck" || bad "healthcheck"
+for _ in $(seq 50); do "$BIN" --listen 127.0.0.1 --port $PORT --healthcheck 2>/dev/null && break; sleep 0.1; done
+"$BIN" --listen 127.0.0.1 --port $PORT --healthcheck && ok "healthcheck" || bad "healthcheck"
 
 D() { docker -H "$PROXY" "$@"; }
 IMG=$(docker inspect -f '{{.Image}}' "$NAME")

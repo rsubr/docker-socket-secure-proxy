@@ -25,3 +25,27 @@ func TestInvalid(t *testing.T) {
 		}
 	}
 }
+
+func TestResolveListen(t *testing.T) {
+	for _, c := range []struct{ l, p, want string }{
+		{":2375", "", ":2375"}, {":2375", "8080", ":8080"}, {"127.0.0.1:2375", "8080", "127.0.0.1:8080"},
+		{"[::1]:2375", "9", "[::1]:9"}, {"localhost", "80", "localhost:80"},
+	} {
+		got, err := ResolveListen(c.l, c.p)
+		if err != nil || got != c.want {
+			t.Errorf("%v: got %q %v", c, got, err)
+		}
+	}
+	for _, p := range []string{"x", "0", "70000"} {
+		if _, err := ResolveListen(":2375", p); err == nil {
+			t.Errorf("port %q should fail", p)
+		}
+	}
+	if _, err := ResolveListen("a:b:c", "80"); err == nil {
+		t.Error("bad listen should fail")
+	}
+	c, _ := Load(env(map[string]string{"PORT": "8081"}))
+	if c.Port != "8081" {
+		t.Errorf("Port=%q", c.Port)
+	}
+}

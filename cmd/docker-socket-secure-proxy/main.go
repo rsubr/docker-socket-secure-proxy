@@ -26,10 +26,15 @@ func main() {
 		os.Exit(2)
 	}
 	listen := flag.String("listen", cfg.ListenAddr, "listen address (env LISTEN_ADDR)")
+	port := flag.String("port", cfg.Port, "listen port, replaces the port of --listen (env PORT)")
 	socket := flag.String("socket", cfg.Socket, "docker socket path (env DOCKER_SOCKET)")
 	health := flag.Bool("healthcheck", false, "HEAD /_ping on the local listener and exit 0/1")
 	flag.Parse()
-	cfg.ListenAddr, cfg.Socket = *listen, *socket
+	cfg.Socket = *socket
+	if cfg.ListenAddr, err = config.ResolveListen(*listen, *port); err != nil {
+		fmt.Fprintln(os.Stderr, "config error:", err)
+		os.Exit(2)
+	}
 
 	if *health {
 		os.Exit(healthcheck(cfg.ListenAddr))
