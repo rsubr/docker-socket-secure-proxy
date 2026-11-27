@@ -144,12 +144,15 @@ Build locally: `docker build -t docker-socket-secure-proxy .` (BuildKit needed f
 
 ### CI and Docker Hub
 
-`.github/workflows/ci.yml` runs vet, tests and a static build check on push/PR.
-`.github/workflows/release.yml` builds `linux/amd64` (ubuntu-latest) and `linux/arm64`
-(native `ubuntu-24.04-arm` runner, no QEMU) in a matrix, pushes each by digest, then a `merge`
-job publishes the multi-arch manifest (`X.Y.Z`, `X.Y`, `latest` on `v*.*.*` tags, `edge` on
-main; SBOM and provenance attached). It runs on those tags, on pushes to main and on manual
-dispatch.
+`.github/workflows/build-release.yml` is the single workflow. The `test` job (vet, `go test -race`,
+static build check) runs on pushes to main, pull requests, `v*.*.*` tags and manual dispatch.
+For tags it first checks the tagged commit is an ancestor of `origin/main` ("release tags must
+come from main"). Only if `test` passes, and never on pull requests, the `build` matrix builds
+`linux/amd64` (ubuntu-latest) and `linux/arm64` (native `ubuntu-24.04-arm` runner, no QEMU) and
+pushes each by digest; the `merge` job publishes the multi-arch manifest (`X.Y.Z`, `X.Y`,
+`latest` on tags, `edge` on main; SBOM and provenance attached). On tags a final `release` job
+creates a GitHub Release with generated notes. Dependabot (`.github/dependabot.yml`) opens
+weekly update PRs for Go modules, GitHub Actions and the Dockerfile base image.
 
 #### Docker Hub push setup
 
@@ -168,9 +171,9 @@ dispatch.
    `gh variable set DOCKERHUB_IMAGE --body myorg/docker-socket-secure-proxy`. Default is
    `<DOCKERHUB_USERNAME>/docker-socket-secure-proxy`.
 5. Trigger a release: `git tag v0.1.0 && git push origin v0.1.0`, or run the workflow manually
-   (Actions, Release, Run workflow, or `gh workflow run release.yml`). A push to main publishes
+   (Actions, Build and Release, Run workflow, or `gh workflow run build-release.yml`). A push to main publishes
    the `edge` tag.
-6. Verify: the Actions run shows both `build` jobs and `merge` green; then
+6. Verify: the Actions run shows `test`, both `build` jobs, `merge` and (for tags) `github release` green; then
    `docker buildx imagetools inspect rsubr/docker-socket-secure-proxy:0.1.0` lists
    `linux/amd64` and `linux/arm64`, and `docker run --rm rsubr/docker-socket-secure-proxy:0.1.0 --help`
    starts the image.
