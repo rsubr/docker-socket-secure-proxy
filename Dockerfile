@@ -11,7 +11,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath -ldflags="-s -w" -o /out/docker-socket-secure-proxy ./cmd/docker-socket-secure-proxy
 
-FROM gcr.io/distroless/static-debian12
+FROM gcr.io/distroless/static-debian13
 ARG VERSION=dev
 ARG REVISION=unknown
 LABEL org.opencontainers.image.title="docker-socket-secure-proxy" \

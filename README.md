@@ -109,7 +109,7 @@ strings below change.
 
 ## Docker
 
-The image is `gcr.io/distroless/static-debian12` (no shell, one static binary, multi-arch
+The image is `gcr.io/distroless/static-debian13` (no shell, one static binary, multi-arch
 amd64/arm64) and runs as root, so it can read the root-owned `/var/run/docker.sock` with no
 `group_add` / `--group-add`. Mount the socket read-only, use a read-only rootfs and drop capabilities.
 
