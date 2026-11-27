@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the image, runs it against the local socket, checks redaction. Needs BuildKit (buildx).
+# Builds the image, runs it against the local socket, checks redaction. Works with BuildKit or the legacy builder.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 PORT=${PORT:-19377}; GID=$(stat -c %g /var/run/docker.sock); N=$$

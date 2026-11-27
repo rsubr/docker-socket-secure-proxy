@@ -1,4 +1,6 @@
 # syntax=docker/dockerfile:1
+# Defaults let the legacy (non-BuildKit) builder work; buildx overrides them.
+ARG BUILDPLATFORM=linux/amd64
 FROM --platform=$BUILDPLATFORM golang:1.27.4 AS build
 ARG TARGETOS
 ARG TARGETARCH
